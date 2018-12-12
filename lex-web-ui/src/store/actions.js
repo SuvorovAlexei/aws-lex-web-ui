@@ -446,34 +446,55 @@ export default {
     });
   },
   postTextMessage(context, message) {
+    const delay = amount =>
+      new Promise((resolve) => {
+        setTimeout(resolve, amount);
+      });
+
+    async function loop(tmsg, response) {
+      let previousDelay = 0;
+      tmsg.messages.forEach(async (mes, index) => {
+        context.commit('setIsLexProcessing', true);
+        previousDelay += (mes.value.length * 100);
+        await delay(previousDelay);
+        let alts = JSON.parse(response.sessionAttributes.appContext || '{}').altMessages;
+        if (mes.type === 'CustomPayload') {
+          if (alts === undefined) {
+            alts = {};
+          }
+          alts.markdown = mes.value;
+        }
+
+        const isLastMessage = tmsg.messages.length - 1 === index;
+
+        context.dispatch(
+          'pushMessage',
+          {
+            text: mes.value,
+            type: 'bot',
+            dialogState: context.state.lex.dialogState,
+            responseCard: isLastMessage ? context.state.lex.responseCard
+              : undefined, // for last response message
+            alts,
+          },
+        );
+
+        if (isLastMessage) {
+          context.commit('setIsLexProcessing', false);
+        }
+      });
+    }
+    debugger;
     return context.dispatch('interruptSpeechConversation')
       .then(() => context.dispatch('pushMessage', message))
+      // .then(() => new Promise(res => setTimeout(res, 3000)))
       .then(() => context.dispatch('lexPostText', message.text))
-      .then((response) => {
+      .then(async (response) => {
         // check for an array of messages
         if (response.message.includes('{"messages":')) {
           const tmsg = JSON.parse(response.message);
           if (tmsg && Array.isArray(tmsg.messages)) {
-            tmsg.messages.forEach((mes, index) => {
-              let alts = JSON.parse(response.sessionAttributes.appContext || '{}').altMessages;
-              if (mes.type === 'CustomPayload') {
-                if (alts === undefined) {
-                  alts = {};
-                }
-                alts.markdown = mes.value;
-              }
-              context.dispatch(
-                'pushMessage',
-                {
-                  text: mes.value,
-                  type: 'bot',
-                  dialogState: context.state.lex.dialogState,
-                  responseCard: tmsg.messages.length - 1 === index // attach response card only
-                    ? context.state.lex.responseCard : undefined, // for last response message
-                  alts,
-                },
-              );
-            });
+            await loop(tmsg, response);
           }
         } else {
           let alts = JSON.parse(response.sessionAttributes.appContext || '{}').altMessages;
@@ -495,11 +516,11 @@ export default {
           );
         }
       })
-      .then(() => {
-        if (context.state.lex.dialogState === 'Fulfilled') {
-          context.dispatch('reInitBot');
-        }
-      })
+      // .then(() => {
+      //   if (context.state.lex.dialogState === 'Fulfilled') {
+      //     context.dispatch('reInitBot');
+      //   }
+      // })
       .catch((error) => {
         const errorMessage = (context.state.config.ui.showErrorDetails) ?
           ` ${error}` : '';
