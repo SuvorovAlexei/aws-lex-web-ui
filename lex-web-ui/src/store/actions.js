@@ -454,9 +454,13 @@ export default {
     async function loop(tmsg, response) {
       let previousDelay = 0;
       tmsg.messages.forEach(async (mes, index) => {
-        context.commit('setIsLexProcessing', true);
-        previousDelay += (mes.value.length * 100);
-        await delay(previousDelay);
+        if (context.state.config.lex.typingEmulation.enabled) {
+          context.commit('setIsLexProcessing', true);
+          previousDelay += (mes.value.length *
+            context.state.config.lex.typingEmulation.msPerSymbol);
+          await delay(previousDelay);
+        }
+
         let alts = JSON.parse(response.sessionAttributes.appContext || '{}').altMessages;
         if (mes.type === 'CustomPayload') {
           if (alts === undefined) {
@@ -473,8 +477,8 @@ export default {
             text: mes.value,
             type: 'bot',
             dialogState: context.state.lex.dialogState,
-            responseCard: isLastMessage ? context.state.lex.responseCard
-              : undefined, // for last response message
+            responseCard: isLastMessage ? context.state.lex.responseCard // attach response card
+              : undefined, // only for last response message
             alts,
           },
         );
@@ -484,10 +488,9 @@ export default {
         }
       });
     }
-    debugger;
+
     return context.dispatch('interruptSpeechConversation')
       .then(() => context.dispatch('pushMessage', message))
-      // .then(() => new Promise(res => setTimeout(res, 3000)))
       .then(() => context.dispatch('lexPostText', message.text))
       .then(async (response) => {
         // check for an array of messages
@@ -516,11 +519,12 @@ export default {
           );
         }
       })
-      // .then(() => {
-      //   if (context.state.lex.dialogState === 'Fulfilled') {
-      //     context.dispatch('reInitBot');
-      //   }
-      // })
+      .then(() => {
+        if (context.state.config.lex.typingEmulation.enabled &&
+            context.state.lex.dialogState === 'Fulfilled') {
+          context.dispatch('reInitBot');
+        }
+      })
       .catch((error) => {
         const errorMessage = (context.state.config.ui.showErrorDetails) ?
           ` ${error}` : '';

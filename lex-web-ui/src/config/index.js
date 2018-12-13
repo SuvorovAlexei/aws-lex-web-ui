@@ -59,6 +59,15 @@ const configDefault = {
   },
 
   lex: {
+    // Should bot send initialText
+    // when state is filfilled
+    reInitOnFulfilled: true,
+
+    // User typing emulation
+    typingEmulation: {
+      enabled: true,
+      msPerSymbol: 700,
+    },
     // Lex bot name
     botName: 'WebUiOrderFlowers',
 
